@@ -227,8 +227,8 @@ Int_t langaupro(Double_t *params, Double_t &maxx, Double_t &FWHM) {
 
 void tripletFit1us(){
  
-  Int_t irunStart = 10000;
-  Int_t irunStop  = 10784;
+  Int_t irunStart = 40000;//100;//10000;
+  Int_t irunStop  = 40063;//272;//10784;
   bool simFlag = false;
 
   TString outFileName = TString("1usTripletFit");
@@ -244,7 +244,10 @@ void tripletFit1us(){
   //time.push_back(0);
   std::vector<Double_t> triplet,tripletErr;
   std::vector<Double_t> runNumber;
-  Double_t globalStartTime = -999;  
+  Double_t globalStartTime = -999; 
+  TH1D * hSinglePEAverage = new TH1D("SinglePEAverage","SinglePEAverage",200,0,2e-10); 
+  TH1D * hTotalChargeAverage = new TH1D("TotalChargeAverage","TotalChargeAverage",150,0,450);
+  TH1D * hEventsPerRun = new TH1D("EventsPerRun","Events per Run",irunStop-irunStart+1,irunStart,irunStop);
     //TString filename; filename.Form("PulseAnalysis_%i.root",irunStart);
     //TString filename = "PulseAnalysisLAr_1_1.root";
     //TString filename = "Out_run_3.root";
@@ -253,7 +256,7 @@ void tripletFit1us(){
     //TString filename = "Out_run_6.root";
   bool cutDebug = false;
   for(int z =irunStart;z<=irunStop;z++){
-
+    if(z>=20000 && z<30000) continue;
     if( z == 10117) continue;
     if( z == 10274) continue;
     if( z == 10330) continue;
@@ -279,8 +282,10 @@ void tripletFit1us(){
     //TString filename = "SimAnaResults.124103-20181206.root;
     //TString filename = TString("Out_run_")+to_string(z)+TString(".root");
     TString filename;
-    if(z>= 100 && z < 2000)
+    if(z>= 100 && z < 1000)
       filename = TString("processedData/SimAnaResults.baconRun_10kBins_1us_10mV_")+to_string(z)+TString(".root");
+    else if(z >= 1000 && z <2000)
+      filename = TString("processedData/SimAnaResults.baconRun_10kBins_1us_20mV_muon_")+to_string(z)+TString(".root");
     else if(z >= 2000 && z <4000)
       filename = TString("processedData/SimAnaResults.baconRun_10kBins_1us_20mV_div_-30mV_thresh_")+to_string(z)+TString(".root");
     else if(z >= 4000 && z <6000)
@@ -288,10 +293,13 @@ void tripletFit1us(){
     else if(z>=10000)
       filename = TString("processedData/SimAnaResults.baconRun_10kBins_1us_20mV_div_-7.2mV_thresh_20ppmN2_")+to_string(z)+TString(".root");
     else{ 
+      //filename = "processedData/SimAnaResults.simEvents_20190308_10000.root";
       filename = "processedData/SimAnaResults.simEvents_20190308_10000.root";
       simFlag = true;
       z = irunStop;
+      //filename = TString("processedData/SimAnaResults.baconRun_10kBins_1us_20mV_div_-7.2mV_thresh_20ppmN2_HADD_")+to_string(z)+TString(".root");
     }
+
     TFile *f = new TFile(filename);
     cout<<"Run "<<z<<" opening file "<<filename<<endl;
     if(f->IsZombie()){
@@ -365,15 +373,13 @@ void tripletFit1us(){
 
     Int_t NEntries = (Int_t)t1->GetEntries();
     TString runStr = to_string(z);
-    TH1D * hHits = new TH1D("Pmt_hit"+runStr,"PMT_arrivial_time_weighted_by_peak_height"+runStr,200,0e-9,10e-6);
     TH1D * hNhits = new TH1D("N_hits"+runStr,"N_hits",200,0,200);
-    hHits->Sumw2();
     TH1F * hTotalCharge;
     TH1F * hPromptTime;
     TH1F * hIntermediateTime;
     TH1F * hLongTime; 
     if(z <10000){
-      hTotalCharge = new TH1F("TotalCharge"+runStr,"Total_Charge_per_event_"+runStr ,150,100,700);
+      hTotalCharge = new TH1F("TotalCharge"+runStr,"Total_Charge_per_event_"+runStr ,150,0,300);
       hPromptTime = new TH1F("PromptTime"+runStr,"PromptTime"+runStr,100,20,200);
       hIntermediateTime = new TH1F("IntermediateTime"+runStr,"IntermediateTime"+runStr,150,0,500);
       hLongTime = new TH1F("LongTime"+runStr,"LongTime"+runStr,150,100,700);
@@ -417,11 +423,11 @@ void tripletFit1us(){
     TF1 *fSinglePhoton = new TF1("SinglePE","landau(0)",0,2e-9);
     outfile->cd();
     Int_t currentID = 0,pastID = -1;
-    std::vector<Double_t> eventSkip;eventSkip.resize(NEvents);
-    std::vector<Double_t> maxPeakTime;maxPeakTime.resize(NEvents);
     Double_t peakMax = -9999, peakTime = -9999,maxTime = -9999,Integral = 0,promptCharge = 0,intermediateCharge = 0,longCharge = 0;
-    Double_t IntegralRun = 0,promptChargeRun = 0,longChargeRun = 0;
-    Double_t tMaxCut = 1.25e-6,tMinCut = 0e-6,vMaxEventCut = 6e-3,vMinCut = 3e-3,peakWidthCut = 0;//25e-9;
+    Double_t IntegralRun = 0,promptChargeRun = 0,longChargeRun = 0,NEntriesLong = 0,NEventsLong = 0;
+    Double_t tMaxCut = 1.25e-6,tMinCut = 0.6e-6,vMaxEventCut = 6e-3,vMinCut = 2e-3,peakWidthCut = 0;//25e-9;
+    NEntriesLong +=NEntries;
+    NEventsLong += NEvents;
     if(z<4000 && z >=2000) tMaxCut = 1.2e-6;
     for(int i = 0; i < NEntries; i++){
       t1->GetEntry(i);
@@ -456,10 +462,12 @@ void tripletFit1us(){
         }
       }
       hNhits->Fill(nhits);
-      if(startTime > startTimeSPE) 
+      if(startTime > startTimeSPE){
         hSinglePhoton->Fill(charge);
+        hSinglePEAverage->Fill(charge);
+      }
     }
-    hSinglePhoton->Fit(fSinglePhoton,"Q","",0.02e-9,.1e-9);
+    hSinglePhoton->Fit(fSinglePhoton,"QN","",0.02e-9,.1e-9);
     Double_t singlePE = 0;
     Double_t singlePEerr = 0;
     singlePE = fSinglePhoton->GetParameter(1);
@@ -477,7 +485,7 @@ void tripletFit1us(){
     //Double_t meanNhits = hGaus->GetParameter(1);
     //Double_t sigmaNhits = hGaus->GetParameter(2);
     std::vector<Double_t> deltaQ,Q,dQNorm;
-    deltaQ.resize(hHits->GetNbinsX());Q.resize(hHits->GetNbinsX());dQNorm.resize(hHits->GetNbinsX());
+    deltaQ.resize(hArrivalTime->GetNbinsX());Q.resize(hArrivalTime->GetNbinsX());dQNorm.resize(hArrivalTime->GetNbinsX());
     //cout<<hGaus->GetChisquare()/hGaus->GetNDF()<<endl;
     for(int i = 0; i < NEntries; i++){
       t1->GetEntry(i);
@@ -504,7 +512,12 @@ void tripletFit1us(){
         continue;
       }
       //avoid events that start late
-      if(tMax > tMaxCut && tMax < tMinCut){
+      if(tMax > tMaxCut){
+        if(cutDebug)cout<<"ientry "<<ientry<<", cut on tMax "<<tMax<<endl;
+        continue;
+      }
+      //avoid events that start late
+      if(T0 < tMinCut){
         if(cutDebug)cout<<"ientry "<<ientry<<", cut on tMax "<<tMax<<endl;
         continue;
       }
@@ -522,6 +535,7 @@ void tripletFit1us(){
         if(singlePE && promptCharge > 0 && longCharge > 0){
           Integral = promptCharge+intermediateCharge+longCharge;
           hTotalCharge->Fill(Integral/singlePE);
+          hTotalChargeAverage->Fill(Integral/singlePE);
           hPromptTime->Fill(promptCharge/singlePE);
           hIntermediateTime->Fill(intermediateCharge/singlePE);
           hLongTime->Fill(longCharge/singlePE);
@@ -533,7 +547,7 @@ void tripletFit1us(){
       }
       //*/
       if(startTime > maxTime) maxTime = startTime;
-      Int_t hitBin = hHits->FindBin(startTime-tMax);
+      Int_t hitBin = hArrivalTime->FindBin(startTime-tMax);
       Double_t err;
       if(Sdev == 0)Sdev = 1.e-3;
       //err like sqrt(N)^2 + uncertainty of pulse width ^2
@@ -542,19 +556,21 @@ void tripletFit1us(){
       deltaQ[hitBin] +=charge*charge;
       dQNorm[hitBin] += 1./err;
       Q[hitBin]      += (charge/err) ;
-      hArrivalTimeUnweighted->Fill(startTime,vMax);
+      hArrivalTimeUnweighted->Fill(startTime-T0,charge);
       //hArrivalTime->Fill(startTime-tMax,charge);
       hArrivalTime->Fill(startTime-tMax,charge);
+      hEventsPerRun->Fill(z);//,1/RunTime);
       Integral+=charge;
-      IntegralRun += charge;
-      if(startTime > 900e-9 - 50e-9 && startTime < 900e-9 + 100e-9){
+      IntegralRun+=charge;
+      Double_t shortTime = 900e-9,shortLeftWindow = 150e-9,shortRightWindow = 150e-9;
+      if(startTime > shortTime - shortLeftWindow && startTime < shortTime + shortRightWindow){
         promptCharge += charge;
         promptChargeRun += charge;
       }
       else if( startTime > 900e-9 +100e-9 && startTime < 900e-9 +200e-9){
         intermediateCharge += charge;
       }
-      else if( startTime > 900e-9 + 100e-9){
+      else if( startTime > shortTime + shortRightWindow){
         longCharge   += charge;
         longChargeRun += charge;
       }
@@ -572,10 +588,22 @@ void tripletFit1us(){
       }
       //*/
     }
-    
     ///*
     //TH1D *hChi = new TH1D("Chi/NDF"+runStr,"Chi/NDF"+runStr,200,0,10e-6);
     //TH1D *hTriplet = new TH1D("Triplet"+runStr,"Triplet"+runStr,200,0,10e-6);
+    Double_t nRunBins = NEntriesLong;
+    Double_t tripNBins = hArrivalTime->GetNbinsX();
+    if(1./sqrt(nRunBins/tripNBins) > .1){
+      do{
+        //cout<<1./sqrt(nRunBins/tripNBins)<<" "<<tripNBins<<" "<<nRunBins<<endl;
+        hArrivalTime->Rebin(2);
+        tripNBins = hArrivalTime->GetNbinsX();
+        if(tripNBins < 10) break;
+      }
+      while(1./sqrt(nRunBins/tripNBins) > .1);
+    }
+
+
     Double_t bestChi = 9999999,bestTrip = 0,bestErrTrip = 0,bestStart,bestSinglet = 0,bestErrSinglet = 0;
     TF1 *f1;
     /*
@@ -623,7 +651,7 @@ void tripletFit1us(){
 
     Double_t startFitTime = hArrivalTime->GetBinCenter(hArrivalTime->GetMaximumBin());
     if(z>1000)
-      f1 = new TF1("myfit","([0]/[1])*exp(-x/[1]) + ([2]/[3])*exp(-x/[3])",startFitTime,maxTime);
+      f1 = new TF1("myfit","([0]/[1])*exp(-x/[1]) + ([2]/[3])*exp(-x/[3])+[4]",startFitTime,maxTime);
     else
       f1 = new TF1("myfit","([0]/[1])*exp(-x/[1]) + ([2]/[3])*exp(-x/[3])",startFitTime,maxTime);
     f1->SetParLimits(0,0,1e-10);
@@ -632,15 +660,16 @@ void tripletFit1us(){
     f1->SetParLimits(2,0,1e-10);
     f1->SetParameter(3,1e-7);
     f1->SetParLimits(3,5e-9,5e-7);
-    f1->SetParLimits(4,0,1);
+    f1->SetParameter(4,1e-10);
+    f1->SetParLimits(4,1e-12,1e-8);
 
     //hArrivalTime->Fit("myfit","Q","",0e-9,maxTime-1000e-9);
     cout<<"startFitTime "<<startFitTime<<", stopTime "<<maxTime-1000e-9<<endl;
-    hArrivalTime->Fit("myfit","Q","",startFitTime,maxTime-1000e-9);
+    hArrivalTime->Fit("myfit","Q0","",startFitTime,maxTime-1000e-9);
     int i =1;
     do{
       cout<<"Refitting...old Triplet is "<<f1->GetParameter(1);
-      hArrivalTime->Fit("myfit","Q","",startFitTime + 10e-9*i,maxTime-1000e-9*(i+1));
+      hArrivalTime->Fit("myfit","Q0","",startFitTime + 10e-9*i,maxTime-1000e-9*(i+1));
       cout<<"...new Triplet is "<<f1->GetParameter(1)<<", Chi/ndf = "<<f1->GetChisquare()/f1->GetNDF()<<", err "<<f1->GetParError(1)/f1->GetParameter(1)<<endl;
       i++;
       if(i> 10){
@@ -648,8 +677,8 @@ void tripletFit1us(){
         break;
       }
     }
-    while(f1->GetChisquare()/f1->GetNDF() > 2 || f1->GetParError(1)/f1->GetParameter(1) > 0.1);
-    if(z >= 110 && z <= 140) hArrivalTime->Fit("myfit","Q","",50e-9,2000e-9);
+    while(f1->GetChisquare()/f1->GetNDF() > 3 || f1->GetParError(1)/f1->GetParameter(1) > 0.1);
+    if(z >= 110 && z <= 140) hArrivalTime->Fit("myfit","Q0","",50e-9,2000e-9);
     bestTrip = f1->GetParameter(1);
     bestErrTrip = f1->GetParError(1);
     bestSinglet = f1->GetParameter(3);
@@ -661,11 +690,8 @@ void tripletFit1us(){
     cout<<"Triplet = "<<bestTrip<<" +/- "<<bestErrTrip<<", Singlet = "<<bestSinglet<<"+/-"<<bestErrSinglet<<" Chi/ndf = "<<f1->GetChisquare()/f1->GetNDF()<<" ratio = "<<f1->GetParameter(0)/f1->GetParameter(2)<<endl;
     A_s.push_back(f1->GetParameter(0));
     A_l.push_back(f1->GetParameter(2));
-    //hHits->GetYaxis()->SetTitle("Arrival time weighted with Peak Height");
-    //hHits->GetYaxis()->SetTitle("integrated charge");
     //hArrivalTime->Draw();
     //c->SetLogy();
-    hHits->Write();
     /*
     hPromptTime->Fit("landau","Q","");
     promptTime.push_back(hPromptTime->GetFunction("landau")->GetParameter(1));
@@ -675,14 +701,6 @@ void tripletFit1us(){
     longTimeError.push_back(hLongTime->GetFunction("landau")->GetParameter(2));
     hPromptTime->Write();
     hLongTime->Write();
-    */
-    /*
-    //    hError->Draw();
-    for(int i = 0 ; i < hHits->GetNbinsX();i++){
-      if(deltaQ[i] == 0) continue;
-      Double_t time = hHits->GetBinCenter(i);
-      Double_t func = f1->Eval(time);
-    }
     */
 
     hSinglePhoton->Write();
@@ -804,29 +822,32 @@ void tripletFit1us(){
     }
     */
     sigmaCharge  = hArrivalTime->IntegralAndError(1,hArrivalTime->GetNbinsX(),sigmaErr,"");
-    sigmaCharge /= NEvents*singlePE;
-    //totalCharge.push_back(sigmaCharge);
-    sigmaErr/= NEvents*singlePE;
+    sigmaCharge /= NEventsLong*singlePE;
+    sigmaErr/= NEventsLong*singlePE;
     totalChargeErr.push_back(sigmaErr);
     promptCharge = hArrivalTime->IntegralAndError(1,hArrivalTime->FindBin(50e-9),promptErr,"");
-    promptCharge/= NEvents*singlePE;
-    //promptTime.push_back(promptCharge);
-    promptErr/= NEvents*singlePE;
+    promptCharge/= NEventsLong*singlePE;
+    promptErr/= NEventsLong*singlePE;
     promptTimeError.push_back(promptErr);
     longCharge   = hArrivalTime->IntegralAndError(hArrivalTime->FindBin(50e-9),hArrivalTime->GetNbinsX(),longChargeErr,"");
-    longCharge/= NEvents*singlePE;
-    //longTime.push_back(longCharge);
-    longChargeErr/= NEvents*singlePE;
+    longCharge/= NEventsLong*singlePE;
+    longChargeErr/= NEventsLong*singlePE;
     longTimeError.push_back(longChargeErr);
-    
-    totalCharge.push_back(IntegralRun/(NEvents*singlePE));
-    promptTime.push_back(promptChargeRun/(NEvents*singlePE));
-    longTime.push_back(longChargeRun/(NEvents*singlePE));
+
+    /*
+    totalCharge.push_back(sigmaCharge);
+    promptTime.push_back(promptCharge);
+    longTime.push_back(longCharge);
+    cout<<"Total Charge "<<sigmaCharge<<"+/-"<<sigmaErr<<", Singlet "<<promptCharge<<"+/-"<<promptErr<<", Intermediate "<<intermediateCharge<<"+/-"<<intermediateTimeErr<<", Triplet "<<longCharge<<"+/-"<<longChargeErr<<endl;
+    */
+    ///*
+    totalCharge.push_back(IntegralRun/(NEventsLong*singlePE));
+    promptTime.push_back(promptChargeRun/(NEventsLong*singlePE));
+    longTime.push_back(longChargeRun/(NEventsLong*singlePE));
+    //*/
 
 
-    //cout<<"Total Charge "<<sigmaCharge<<"+/-"<<sigmaErr<<", Singlet "<<promptCharge<<"+/-"<<promptErr<<", Intermediate "<<intermediateCharge<<"+/-"<<intermediateTimeErr<<", Triplet "<<longCharge<<"+/-"<<longChargeErr<<endl;
-
-    cout<<"Total Charge "<<IntegralRun/(NEvents*singlePE)<<"+/-"<<sigmaErr<<", Singlet "<<promptChargeRun/(NEvents*singlePE)<<"+/-"<<promptErr<<", Triplet "<<longChargeRun/(NEvents*singlePE)<<"+/-"<<longChargeErr<<endl;
+    cout<<"Total Charge "<<IntegralRun/(NEventsLong*singlePE)<<"+/-"<<sigmaErr<<", Singlet "<<promptChargeRun/(NEventsLong*singlePE)<<"+/-"<<promptErr<<", Triplet "<<longChargeRun/(NEventsLong*singlePE)<<"+/-"<<longChargeErr<<" NEvents"<<NEventsLong<<endl;
     
     hTotalCharge->Write();
     hPromptTime->Write();
@@ -896,22 +917,38 @@ void tripletFit1us(){
     }
   }
 
-  TF1 *fFilter = new TF1("Filter Rate","[0]/(1+[1]*[0]*100*exp(-(x)/[2]))",0,30);
+  TF1 *fFilter = new TF1("Filter Rate","[0]/(1+[1]*[0]*[3]*exp(-(x)/[2]))",0,30);
   fFilter->SetParameter(0,1.6e-6);
   fFilter->SetParLimits(0,1.e-6,2e-6);
   fFilter->SetParameter(1,40);
   fFilter->SetParLimits(1,10,1e15);
   fFilter->SetParameter(2,3);
   fFilter->SetParLimits(2,0,100);
+  if(irunStart == 100)
+    fFilter->FixParameter(3,7.4);
+  else if(irunStart == 10000)
+    fFilter->FixParameter(3,1.4);
+  else{
+    fFilter->SetParameter(3,1);
+    fFilter->SetParLimits(3,1,100);
+  }
 
+  Double_t tripMin = hTripletvTime->GetMinimum(1e-9);
+  Double_t tripMax = hTripletvTime->GetMaximum();
+  cout<<"Trip min/mac"<<tripMin<<"/"<<tripMax<<endl;
+  hTripletvTime->SetMaximum(tripMax*1.1);
+  hTripletvTime->SetMinimum(tripMin*0.9);
   hTripletvTime->SetMarkerStyle(4);
   hTripletvTime->SetMarkerColor(4);
+  hTripletvTime->Fit(fFilter,"Q","",0,17);
   hTripletvTime->Draw();
-  hTripletvTimeModified->Fit(fFilter,"Q","",0,17);
+  
   hTripletvTimeModified->SetMarkerColor(2);
   hTripletvTimeModified->SetMarkerStyle(5);
-  if(irunStart == 100)
-    hTripletvTimeModified->Draw("same");
+  if(irunStart == 100){
+    //hTripletvTimeModified->Draw("same");
+    hTripletvTimeModified->Fit(fFilter,"Q0","",0,hTripletvTime->GetBinContent(hTripletvTime->GetMaximumBin()));
+  }
   TCanvas * c2 = new TCanvas("c2","c2");
   c2->cd();
   hChargevTime->Draw();
@@ -940,10 +977,6 @@ void tripletFit1us(){
     hTripletModvConcentration->SetBinError(i,tripletModErr[tripletMod.size() -i -1]/1.622e-6);
   }
   
-  TCanvas * cA = new TCanvas("cA","cA");
-  cA->cd();
-  if(irunStart == 100)
-    hTripletModvConcentration->Draw(); 
 
   TH1D * hTripletvCharge = new TH1D("Tripet_versus_Photo_Electron_Yield","Triplet_v_P.E.",1000,400e-9,1600e-9);
   TH1D * hTripletvRunNumber = new TH1D("Tripet_versus_RunNumber","Triplet_v_RunNumber.",runNumber.size()-1,&(runNumber[0]));
@@ -969,16 +1002,14 @@ void tripletFit1us(){
   cout<<"mean SPE "<<SPEMean<<", error "<<SPEErr<<endl;
   TCanvas * c3 = new TCanvas("c3","c3");
   c3->cd();
+  hEventsPerRun->Draw();
   //hTripletvCharge->Draw();
-  hTotalChargevRunNumber->Draw();
-  hTripletChargevRunNumber->Draw("same");
-  hSingletChargevRunNumber->Draw("same");
 
 
   TCanvas * c4 = new TCanvas("c4","c4");
   c4->cd();
   hTripletvRunNumber->Draw();
-
+  //hSinglePEAverage->Write();
   
 outfile->Write();
 }

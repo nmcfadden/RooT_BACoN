@@ -13,10 +13,8 @@ anaSim::anaSim(Int_t z,Int_t nDer){
   //TString fileName = TString("baconRun_10kBins_400ns_10mV_")+to_string(z)+TString(".root");
   //TString fileName = TString("baconRun_10kBins_1us_10mV_")+to_string(z)+TString(".root");
   TString fileName;
-  if(z >= 1000 && z <=1002)
-    fileName = TString("baconRun_10kBins_1us_20mV_muon_perpendicular_")+to_string(z)+TString(".root");
-  else if(z >= 1003 && z <=1007)
-    fileName = TString("baconRun_10kBins_1us_20mV_muon_parallel_")+to_string(z)+TString(".root");
+  if(z >= 1000 && z <2000)
+    fileName = TString("baconRun_10kBins_1us_20mV_muon_")+to_string(z)+TString(".root");
   else if(z>=2000 && z < 4000)
     fileName = TString("baconRun_10kBins_1us_20mV_div_-30mV_thresh_") + to_string(z) +TString(".root");
   else if(z>=4000 && z < 6000)
@@ -321,8 +319,8 @@ anaSim::anaSim(Int_t z,Int_t nDer){
     }
     if(ientry%100 == 0) cout<<"completed "<<ientry<<" events"<<endl;
   }
-  hSumFresh[0]->Fit("expo","","",2e-6,7e-6);
-  hSum[0]->Fit("expo","","",2e-6,7e-6);
+  //hSumFresh[0]->Fit("expo","","",2e-6,7e-6);
+  //hSum[0]->Fit("expo","","",2e-6,7e-6);
   cout<<"root -l "<<outFileName<<endl;
   //ntuplePulse->Write();
   outFile->Write();
