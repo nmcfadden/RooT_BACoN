@@ -285,8 +285,7 @@ anaSim::anaSim(Int_t z,Int_t nDer){
       }
       //ntupleEvent->Fill(z,ientry,j,Sdev,baseline,-sum,deltaT,peakTime.size()/2,-vMaxEvent,tMaxEvent);
       sort(simEvent->startTime.begin(),simEvent->startTime.end());
-      if(z == 0) sTitle += TString("M_") + to_string(nFound)+TString("/G")+to_string(simEvent->startTime.size())+TString("_N/") + to_string(nNoise);
-      else sTitle += TString("tMax_")+to_string(tMaxEvent*1e6)+TString("_vMax_")+to_string(vMaxEvent)+TString("_totalCharge_")+to_string(totalCharge);
+      sTitle += TString("M_") + to_string(nFound)+TString("/G")+to_string(simEvent->startTime.size())+TString("_N/") + to_string(nNoise);
       ntupleEvent->Fill(z,ientry,Sdev,baseline,-sum,deltaT,tMaxEvent,-vMaxEvent,totalCharge);//-vMaxEvent,tMaxEvent);
       for(int i = 0; i < simTimes.size(); i++) sTitle +=TString("_") + to_string(1e6*simTimes[i]);
       hSignal[j]->SetTitle(sTitle);
