@@ -73,6 +73,7 @@ class anaSim{
     TH1D * hSumFresh[1];
     TH1D * hSumBaseline[1];
     TH1D * hIntegral[1];
+    TH1D * hFlatBaseline[1];
 };
 
 

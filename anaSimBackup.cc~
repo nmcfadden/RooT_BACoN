@@ -298,10 +298,7 @@ anaSimBackup::anaSimBackup(Int_t z){
     }
     signal.clear();
     derivative.clear();
-    if(ientry == nentries -1 && eventInfo != NULL){
-      eventInfo->Write();
-      cout<<"event info written "<<endl;
-    }
+    if(ientry == nentries -1) eventInfo->Write();
     if(ientry%100 == 0) cout<<"completed "<<ientry<<" events"<<endl;
   }
   cout<<"root -l "<<outFileName<<endl;

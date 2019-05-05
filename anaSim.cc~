@@ -29,9 +29,9 @@ anaSim::anaSim(Int_t z,Int_t nDer){
   TFile *outFile = new TFile(outFileName,"recreate");
   printf(" opening output file %s \n",outFileName.Data());
 
-  TNtuple *ntuplePulse = new TNtuple("ntuplePulse","ntuplePulse","ientry:pmtNum:nhits:charge:startTime:peakWidth:T0:V0:vMax:vMaxTime:Sdev:baseline");
+  TNtuple *ntuplePulse = new TNtuple("ntuplePulse","ntuplePulse","ientry:pmtNum:nhits:charge:startTime:peakWidth:T0:V0:C0:vMax:vMaxTime:Sdev:baseline");
   //TNtuple *ntupleEvent = new TNtuple("ntupleEvent","ntupleEvent","irun:ientry:pmtNum:Sdev:baseline:integral:deltaT:deltaV:vMax:tMax");
-  TNtuple *ntupleEvent = new TNtuple("ntupleEvent","ntupleEvent","irun:ientry:Sdev:baseline:integral:deltaT:tMax:vMax");
+  TNtuple *ntupleEvent = new TNtuple("ntupleEvent","ntupleEvent","irun:ientry:Sdev:baseline:integral:deltaT:tMax:vMax:cMax:totalCharge");
   TNtuple *ntupleSim = new TNtuple("ntupleSim","ntupleSim","irun:ientry:nMatch:deltaT:vMaxFound:truthVMax:charge");
   TNtuple *ntupleSimEvent = new TNtuple("ntupleSimEvent","ntupleSimEvent","irun:ientry:TotalCharge:nFound:nMiss:nNoise:truthN");  
 
@@ -94,13 +94,13 @@ anaSim::anaSim(Int_t z,Int_t nDer){
     if(ientry == 0) cout<<"time bin size is "<<deltaT<<endl;  
     peakFindingDebug = false;
     /*
-    if( ientry == 1){
+    Int_t skipBin = 100;
+    if( ientry == skipBin+1){
       if(eventInfo != NULL)
         eventInfo->Write();
       break;
     }
     peakFindingDebug = true;
-    Int_t skipBin = 0;
     NHistograms = skipBin;
     //if(skipBin < ientry ) break;
     if( skipBin != ientry) continue;
@@ -120,7 +120,7 @@ anaSim::anaSim(Int_t z,Int_t nDer){
         hSumFresh[j] = new TH1D(TString("SumVirgin_")+to_string(j),"",NEvents,pmtEvent->time[0],pmtEvent->time[NEvents-1]);
       }
       hPeakFinding[j] = new TH1D(TString("PeakFinding")+to_string(ientry),TString("PeakFinding")+to_string(ientry),NEvents,pmtEvent->time[0],pmtEvent->time[NEvents-1]);
-
+      hFlatBaseline[j] = new TH1D(TString("FlatBaseline")+to_string(ientry),TString("FlatBaseline")+to_string(ientry),NEvents,pmtEvent->time[0],pmtEvent->time[NEvents-1]);
       std::vector<Double_t> integral;
       for(int i = 0; i < signal[j].size(); i++){
         //signal[j][i] = signal[j][i] - fPoly[j]->Eval(pmtEvent->time[i]);
@@ -140,16 +140,22 @@ anaSim::anaSim(Int_t z,Int_t nDer){
       derivative[j] = Derivative(signal[j],nDer);
       hDerivative[j] = new TH1D(TString("derivative_")+to_string(j)+TString("_")+to_string(ientry),"",NEvents,pmtEvent->time[0],pmtEvent->time[NEvents-1]);
     }
+    std::vector<std::vector<Double_t> > flatBaseline;
+    flatBaseline.resize(1);
+    
+    //flatBaseline[0] = BaselineSubtraction(signal[0],100,0,ientry);
     sum = 0;
     //cout<<"finished first loop"<<endl;
     for(int j = 0; j < derivative.size(); j++){
       for(int i = 0; i < derivative[j].size(); i++){
         //signal[j][i] /= (double) nInt;
+        //cout<<flatBaseline[j][i]<<endl;
         sum += signal[j][i];
         hSignal[j]->SetBinContent(i,signal[j][i]);
         hPeakFinding[j]->SetBinContent(i+1,0);
         hDerivative[j]->SetBinContent(i+1,derivative[j][i]);
         hIntegral[j]->SetBinContent(i+1,sum*deltaT);
+        //hFlatBaseline[j]->SetBinContent(i+1,flatBaseline[j][i]);
       }
     }
     if(peakFindingDebug) hSignal[0]->Draw();
@@ -213,7 +219,7 @@ anaSim::anaSim(Int_t z,Int_t nDer){
     */
     //filling ntuple
     for(int j = 0; j < signal.size(); j++){
-      Double_t vMaxEvent = 0,tMaxEvent = 0;
+      Double_t vMaxEvent = 0,tMaxEvent = 0,cMaxEvent = 0;
       TString sTitle = TString("");
       Double_t baseline = CalculateMean(signal[j],0,signal[j].size()*0.05);//500);
       Double_t Sdev =  CalculateSdev(signal[j],0,signal[j].size()*0.05,baseline);
@@ -221,11 +227,11 @@ anaSim::anaSim(Int_t z,Int_t nDer){
       //ntupleEvent->Fill(z,ientry,j,Sdev,baseline,-sum,deltaT,peakTime.size()/2);
       
       if(peakTime[j].empty()) continue;
-      Double_t T0=0,V0 = 0;
+      Double_t T0=0,V0 = 0,C0 = 0;
       Double_t nFound = 0,nMiss = 0,nNoise = 0,totalCharge = 0;
       //cout<<"entry "<<ientry<<endl;
       for(int i = 0; i < peakTime[j].size()-1; i += 2){
-        Double_t vMax = 0,charge = 0,vMaxTime = 0,startTime,stopTime,peakWidth;
+        Double_t vMax = 0,charge = 0,vMaxTime = 0,cMax = 0,startTime,stopTime,peakWidth;
         Int_t startBin = peakTime[j][i],stopBin = peakTime[j][i+1];
         //Int_t startBin = hSignal[j]->FindBin(400e-9);
         //Int_t stopBin  = hSignal[j]->FindBin(500e-9);
@@ -240,18 +246,21 @@ anaSim::anaSim(Int_t z,Int_t nDer){
           if(std::fabs(signal[j][k]-BaSeLiNe[k]) > std::fabs(vMax) ){
             vMax = signal[j][k]-BaSeLiNe[k];
             vMaxTime = pmtEvent->time[k];
+            cMax = charge;
           }
           hPeakFinding[j]->SetBinContent(k,signal[j][k]-BaSeLiNe[k]);
         }
         if(i == 0) {
           T0 = startTime;
           V0 = vMax;
+          C0 = -charge*deltaT;
         }
-        ntuplePulse->Fill(ientry,j,peakTime[j].size()/2,-charge*deltaT,startTime,peakWidth,T0,V0,-vMax,vMaxTime,0,0);
+        ntuplePulse->Fill(ientry,j,peakTime[j].size()/2,-charge*deltaT,startTime,peakWidth,T0,V0,C0,-vMax,vMaxTime,0,0);
         //sTitle += TString("Charge_")+to_string(-1e9*deltaT*charge)+TString("_start/stop_")+to_string(1.e6*startTime)+TString("/")+to_string(1.e6*stopTime)+TString("_vMax_")+to_string(-vMax)+TString("_");
         if(std::fabs(vMax) > std::fabs(vMaxEvent) ){
           vMaxEvent = vMax;
           tMaxEvent = vMaxTime;
+          cMaxEvent = cMax*deltaT;
         }
         Double_t simTimeWindow = 10e-9,deltaSimTime = 9999,truthTime = 0,truthCharge = 0.05,truthVMax = 0;
         Double_t nMatch = 0;
@@ -285,8 +294,9 @@ anaSim::anaSim(Int_t z,Int_t nDer){
       }
       //ntupleEvent->Fill(z,ientry,j,Sdev,baseline,-sum,deltaT,peakTime.size()/2,-vMaxEvent,tMaxEvent);
       sort(simEvent->startTime.begin(),simEvent->startTime.end());
-      sTitle += TString("M_") + to_string(nFound)+TString("/G")+to_string(simEvent->startTime.size())+TString("_N/") + to_string(nNoise);
-      ntupleEvent->Fill(z,ientry,Sdev,baseline,-sum,deltaT,tMaxEvent,-vMaxEvent,totalCharge);//-vMaxEvent,tMaxEvent);
+      if(z == 0) sTitle += TString("M_") + to_string(nFound)+TString("/G")+to_string(simEvent->startTime.size())+TString("_N/") + to_string(nNoise);
+      else sTitle += TString("tMax_")+to_string(tMaxEvent*1e6)+TString("_vMax_")+to_string(vMaxEvent)+TString("_totalCharge_")+to_string(totalCharge);
+      ntupleEvent->Fill(z,ientry,Sdev,baseline,-sum,deltaT,tMaxEvent,-vMaxEvent,-cMaxEvent,-totalCharge);//-vMaxEvent,tMaxEvent);
       for(int i = 0; i < simTimes.size(); i++) sTitle +=TString("_") + to_string(1e6*simTimes[i]);
       hSignal[j]->SetTitle(sTitle);
     }
@@ -309,6 +319,7 @@ anaSim::anaSim(Int_t z,Int_t nDer){
         delete hDerivative[i];
         delete hIntegral[i];
         delete hPeakFinding[i];
+        delete hFlatBaseline[i];
       }
     }
     signal.clear();
@@ -607,32 +618,34 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
   //Double_t rmsSdev = CalculateSdev(diff,0,rmsBin,CalculateMean(diff));
   Double_t rms =rmsSdev;// min(rmsFit,rmsSdev);
   Double_t loRMS = 3.5*rms;//CalculateSdev(diff,0,rmsBin,CalculateMean(diff));
+  //if midRMS is larger than hiRMS than the peakfind breaks
+  Double_t midRMS = 2.5*rms;
   Double_t hiRMS = 3.5*rms;//CalculateSdev(diff,0,rmsBin,CalculateMean(diff));
   //cout<<"RMS = "<<rms<<endl;
-  hDerivative[pmtNum]->SetTitle(TString("loThreshold_")+to_string(loRMS)+TString("hiThreshold_")+to_string(hiRMS)+TString("_mean_")+to_string(CalculateMean(diff)) );
-  Bool_t low1 = false,low2 = false,high1 = false, high2 = false, ll = false, hh = false;
+  hDerivative[pmtNum]->SetTitle(TString("loThreshold_")+to_string(loRMS)+TString("_hiThreshold_")+to_string(hiRMS)+TString("_midThresh_")+to_string(midRMS) );
+  hDerivative[pmtNum]->SetLineColor(8);
+  Bool_t low1 = false,low2 = false, mid1 = false, mid2 = false,high1 = false, high2 = false, ll = false, hh = false,mm = false;
 
-  Int_t LowStartBin = -1,LowStopBin = -1,HighStartBin = -1,HighStopBin = -1;
+  Int_t LowStartBin = -1,LowStopBin = -1,MidStartBin = -1, MidStopBin = -1, HighStartBin = -1,HighStopBin = -1;
   Int_t zeroCrossing = 0;
   for(int i = 1; i < diff.size(); i++){
-    /*
-    if(i < .2*diff.size() && i > 0.1*diff.size()){
-    
-    }
-    else{
-    
-    }
-    */
+
     if(diff[i] <= -loRMS && diff[i-1] > -loRMS){
       LowStartBin = i;
       low1 =  true;
-      //cout<<pmtEvent->time[LowStartBin]<<"  "<<diff[i]<<" "<<diff[i-1]<<endl;
     }
     if(diff[i] >= -loRMS && diff[i-1] < -loRMS ){
       LowStopBin = i;
       low2 = true;
     }
-
+    if(diff[i] >= midRMS && diff[i-1] < midRMS ){
+      MidStartBin = i;
+      mid1 = true;
+    }
+    if(diff[i] <= midRMS && diff[i-1] > midRMS ){
+      MidStopBin = i;
+      mid2 = true;
+    }
     if(diff[i] >= hiRMS && diff[i-1] < hiRMS ){
       HighStartBin = i;
       high1 = true;
@@ -652,13 +665,16 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
       if(peakFindingDebug){
         cout<<"low "<<pmtEvent->time[LowStartBin]<<" "<<pmtEvent->time[LowStopBin]<<" "<<diff[i]<<" "<<-rms<<endl;
         cout<<"\thi "<<pmtEvent->time[HighStartBin]<<" "<<pmtEvent->time[HighStopBin]<<endl;
+        cout<<"\tmid "<<pmtEvent->time[MidStartBin]<<" "<<pmtEvent->time[MidStopBin]<<endl;
       }
 
       peakTime.push_back(LowStartBin);
       peakTime.push_back(LowStopBin);
       peakFlag.push_back(-1);
       low1 = false; low2 = false;
-      if(hh)
+      //Make sure mid peaks are not found before low peaks
+      mid1 = false;mid2 = false;
+      if(hh || mm)
         ll = false;
       else{
         ll = true;
@@ -667,10 +683,12 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
       }
     }
     
+     
     if(high1 && high2){
       if(peakFindingDebug){
         cout<<"hi "<<pmtEvent->time[HighStartBin]<<" "<<pmtEvent->time[HighStopBin]<<" "<<diff[i]<<" "<<rms<<endl;
         cout<<"\tlow "<<pmtEvent->time[LowStartBin]<<" "<<pmtEvent->time[LowStopBin]<<endl;
+        cout<<"\tmid "<<pmtEvent->time[MidStartBin]<<" "<<pmtEvent->time[MidStopBin]<<endl;
       }
       peakTime.push_back(HighStartBin);
       peakTime.push_back(HighStopBin);
@@ -681,14 +699,28 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
       else 
         hh = false;
     }
-    
+    else if(mid1 && mid2 && ll){
+      if(peakFindingDebug){
+        cout<<"mid "<<pmtEvent->time[MidStartBin]<<" "<<pmtEvent->time[MidStopBin]<<" "<<diff[i]<<" "<<rms<<endl;
+        cout<<"\tlow "<<pmtEvent->time[LowStartBin]<<" "<<pmtEvent->time[LowStopBin]<<endl;
+        cout<<"\thi "<<pmtEvent->time[HighStartBin]<<" "<<pmtEvent->time[HighStopBin]<<endl;
+      }
+      peakTime.push_back(MidStartBin);
+      peakTime.push_back(MidStopBin);
+      peakFlag.push_back(2);
+      mid1 = false;mid2 = false;
+      if(ll)
+        mm = true;
+      else 
+        mm = false;
+    }
+
     if( ll && hh) {
       if(zeroCrossing>1){
         zeroCrossing = 0;
         ll = false;
         hh = false;
         low1 = false; low2 = false;
-        high1 = false;high2 = false;
         continue;
       }
       if(peakFindingDebug) cout<<"llhh "<<pmtEvent->time[LowStartBin]<<" "<<pmtEvent->time[HighStopBin]<<" zeroCrossing "<<zeroCrossing<<endl;
@@ -700,7 +732,25 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
       low1 = false; low2 = false;
       high1 = false;high2 = false;
       ll = false;hh = false;
-      //LowStartBin = -1;LowStopBin = -1;HighStartBin = -1;HighStopBin = -1;
+    }
+    else if( ll && mm) {
+      if(zeroCrossing>1){
+        zeroCrossing = 0;
+        ll = false;
+        mm = false;
+        low1 = false; low2 = false;
+        mid1 = false;mid2 = false;
+        continue;
+      }
+      if(peakFindingDebug) cout<<"llmm "<<pmtEvent->time[LowStartBin]<<" "<<pmtEvent->time[MidStopBin]<<" zeroCrossing "<<zeroCrossing<<endl;
+      peakFlag.erase(peakFlag.end()-2,peakFlag.end());
+      peakFlag.push_back(2);
+      peakTime.erase(peakTime.end() - 4,peakTime.end() );
+      peakTime.push_back(LowStartBin);
+      peakTime.push_back(MidStopBin);
+      low1 = false; low2 = false;
+      mid1 = false;mid2 = false;
+      ll = false;mm = false;
     }
    
   }
@@ -711,8 +761,13 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
     Int_t hiBin = peakTime[i+1];
     Double_t startTime = pmtEvent->time[lowBin];
     Double_t stopTime = pmtEvent->time[hiBin];
-    ///*
-    if( (hiBin-lowBin)*deltaT < minPeakWidth){// && (stopTime < 1.2e-6 && startTime > 1e-6) ){
+    /*
+    if( peakFlag[i/2] == 1 && (hiBin-lowBin)*deltaT < 1.5*minPeakWidth){
+      if(peakFindingDebug) cout<<"Removing UP-TYPE small pulse start "<<pmtEvent->time[lowBin]<<", stop "<<pmtEvent->time[hiBin]<<endl;
+      continue;
+    }
+    */
+    if( (hiBin-lowBin)*deltaT < minPeakWidth){
       if(peakFindingDebug) cout<<"Removing small pulse start "<<pmtEvent->time[lowBin]<<", stop "<<pmtEvent->time[hiBin]<<endl;
       continue;
     }
@@ -726,10 +781,8 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
       if( ((diff[k] < 0 && diff[k-1] > 0) || (diff[k] > 0 && diff[k-1] < 0))){
         zeroCrossing++;
       }
-      //#1 crossing
-      if( (peakFlag[i/2] != 1) && (diff[k] < -peakThresh && diff[k-1] > -peakThresh)){
-      //if((diff[k] < peakThresh && diff[k-1] > peakThresh) ){
-      //if( (fabs(diff[k]) < peakThresh && fabs(diff[k-1]) > peakThresh)){
+      //#-1 && #0 crossing
+      if( (peakFlag[i/2] == 0 || peakFlag[i/2] == -1 ) && (diff[k] < -peakThresh && diff[k-1] > -peakThresh)){
         if(peakFindingDebug)cout<<"extending low bin from "<<pmtEvent->time[lowBin]<<", to "<<pmtEvent->time[k]<<", peakFlag "<<peakFlag[i/2]<<endl;
         if(peakFindingDebug)cout<<"\tdiff[k] "<<diff[k]<<", diff[k-1] "<<diff[k-1]<<" peakThresh "<<peakThresh<<endl;
         if(sig[k] > 0)
@@ -738,10 +791,8 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
           lowBin = k;
         break;
       }
-      //#1 crossing
-      else if( (peakFlag[i/2] == 1) && ( (diff[k] < -peakThresh && diff[k-1] > -peakThresh)) ){
-      //if( (diff[k] < peakThresh && diff[k-1] > peakThresh)){
-      //if( (fabs(diff[k]) > peakThresh && fabs(diff[k-1]) < peakThresh)){
+      //#1 && #2 crossing
+      else if( (peakFlag[i/2] >= 1) && ( (diff[k] < -peakThresh && diff[k-1] > -peakThresh)) ){
         if(peakFindingDebug)cout<<"extending low bin from "<<pmtEvent->time[lowBin]<<", to "<<pmtEvent->time[k]<<", peakFlag "<<peakFlag[i/2]<<endl;
         if(peakFindingDebug)cout<<"\tdiff[k] "<<diff[k]<<", diff[k-1] "<<diff[k-1]<<" peakThresh "<<peakThresh<<endl;
         if(sig[k] > 0)
@@ -782,6 +833,8 @@ std::vector<Int_t> anaSim::PeakFinding(std::vector<Double_t> sig, std::vector<Do
     }
 
     if(peakFindingDebug) cout<<"#### Pushing back lowBinTime "<<pmtEvent->time[lowBin]<<", highBin "<<pmtEvent->time[hiBin]<<" ####"<<endl;
+    //if( peakFlag[i/2] == 2) cout<<"ientry ... "<<ientry<<" Mid peakfinding...lowBinTime "<<pmtEvent->time[lowBin]<<", midBin "<<pmtEvent->time[hiBin]<<" ####"<<endl;
+
     peakTimeTrimmed.push_back(lowBin);
     peakTimeTrimmed.push_back(hiBin );
   }
@@ -836,7 +889,7 @@ std::vector<Double_t> anaSim::BaselineSubtraction(std::vector<Double_t> sig, Int
     //middle value is the median of the window per Local Median method
     //tuned value to 0.8 to better match long/large peak baselines
     //N. McFadden 
-    median.push_back(localMedian[(int)localMedian.size()*.5]);
+    median.push_back(localMedian[(int)localMedian.size()*.8]);
     //median.push_back(localMedian[localMedian.size()*.2]);
   }
   for(int i = 0; i < median.size(); i++){

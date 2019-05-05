@@ -58,7 +58,6 @@ class anaSimBackup{
     Int_t NHistograms = 1000;
     Double_t pi = 3.14159265359;
     Double_t deltaT = 0;
-    bool peakFindingDebug = false;
 
     Double_t minPeakWidth = 5e-9;
     Double_t maxPeakWidth = 500e-9;
